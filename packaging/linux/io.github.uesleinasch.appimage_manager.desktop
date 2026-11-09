@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=AppImage Manager
+GenericName=Gerenciador de AppImages
+Comment=Gerencie AppImages: atualizações, atalhos no menu e início automático
+Exec=appimage-manager
+Icon=io.github.uesleinasch.appimage_manager
+Terminal=false
+Categories=System;Utility;PackageManager;
+Keywords=appimage;aplicativos;atualização;launcher;
+StartupWMClass=appimage_manager

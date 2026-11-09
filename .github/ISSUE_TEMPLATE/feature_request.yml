@@ -1,0 +1,31 @@
+name: Sugerir funcionalidade
+description: Proponha uma melhoria ou recurso novo
+labels: [melhoria]
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Qual problema isso resolve?
+      description: Conte o contexto e a dificuldade atual.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposta
+    attributes:
+      label: Solução proposta
+      description: Como você imagina que deveria funcionar?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: Alternativas consideradas
+
+  - type: checkboxes
+    id: contribuicao
+    attributes:
+      label: Contribuição
+      options:
+        - label: Tenho interesse em implementar esta funcionalidade

@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag existente para publicar (ex.: v0.1.0)
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: 3.47.9
+
+jobs:
+  release:
+    name: Build e publicação do .deb
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolver versão
+        id: version
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag inválida: $TAG" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.version.outputs.tag }}
+
+      - name: Dependências de build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter test
+
+      - name: Build Linux
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          flutter build linux --release \
+            --build-name="${VERSION%%[-+]*}" \
+            --dart-define=APP_VERSION="$VERSION"
+
+      - name: Empacotar
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          ./packaging/linux/build_deb.sh "$VERSION" amd64
+          tar -C build/linux/x64/release/bundle -czf "build/deb/appimage-manager_${VERSION}_linux_x64.tar.gz" .
+          (cd build/deb && sha256sum *.deb *.tar.gz > SHA256SUMS)
+
+      - name: Publicar release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          prerelease=()
+          [[ "$TAG" == *-* ]] && prerelease=(--prerelease)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" build/deb/*.deb build/deb/*.tar.gz build/deb/SHA256SUMS --clobber
+          else
+            gh release create "$TAG" build/deb/*.deb build/deb/*.tar.gz build/deb/SHA256SUMS \
+              --title "AppImage Manager $TAG" --generate-notes "${prerelease[@]}"
+          fi

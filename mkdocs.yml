@@ -1,0 +1,69 @@
+site_name: AppImage Manager
+site_description: Gerenciador de AppImages para Linux, feito com Flutter e Material Design 3
+site_url: https://uesleinasch.github.io/AppImageManager/
+repo_url: https://github.com/uesleinasch/AppImageManager
+repo_name: uesleinasch/AppImageManager
+edit_uri: edit/main/docs/
+copyright: Licença MIT
+
+theme:
+  name: material
+  language: pt-BR
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: light blue
+      toggle:
+        icon: material/weather-night
+        name: Usar tema escuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: light blue
+      toggle:
+        icon: material/weather-sunny
+        name: Usar tema claro
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.action.edit
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Início: index.md
+  - Instalação: instalacao.md
+  - Guia de uso:
+      - Gerenciando aplicativos: uso.md
+      - Atualizações: atualizacoes.md
+  - Desenvolvimento:
+      - Arquitetura: arquitetura.md
+      - Contribuindo: contribuindo.md

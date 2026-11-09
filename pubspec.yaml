@@ -1,0 +1,27 @@
+name: appimage_manager
+description: "Gerenciador de AppImages para Linux: atualizações, atalhos no menu e início automático."
+publish_to: 'none'
+homepage: https://github.com/uesleinasch/AppImageManager
+repository: https://github.com/uesleinasch/AppImageManager
+issue_tracker: https://github.com/uesleinasch/AppImageManager/issues
+
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  file_selector: ^1.1.0
+  flutter_svg: ^2.3.2
+  http: ^1.6.0
+  path: ^1.9.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

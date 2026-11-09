@@ -1,0 +1,64 @@
+name: Relatar bug
+description: Algo não funciona como esperado
+labels: [bug, triagem]
+body:
+  - type: markdown
+    attributes:
+      value: Obrigado por reportar! Antes de abrir, confira se já existe uma issue parecida.
+
+  - type: textarea
+    id: descricao
+    attributes:
+      label: O que aconteceu?
+      description: Descreva o problema e o que você esperava que acontecesse.
+    validations:
+      required: true
+
+  - type: textarea
+    id: passos
+    attributes:
+      label: Passos para reproduzir
+      placeholder: |
+        1. Adicionar o AppImage X
+        2. Ativar "Iniciar com o sistema"
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: appimage
+    attributes:
+      label: AppImage envolvido
+      description: Nome, versão e link de download, se for público.
+
+  - type: input
+    id: versao
+    attributes:
+      label: Versão do AppImage Manager
+      description: Disponível em "Sobre" no app.
+    validations:
+      required: true
+
+  - type: input
+    id: distro
+    attributes:
+      label: Distribuição e ambiente gráfico
+      placeholder: Ubuntu 24.04, GNOME 46, Wayland
+    validations:
+      required: true
+
+  - type: dropdown
+    id: instalacao
+    attributes:
+      label: Como você instalou o AppImage Manager?
+      options:
+        - Pacote .deb
+        - Tarball (tar.gz)
+        - Compilado a partir do código-fonte
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Rode `appimage-manager` no terminal e cole a saída relevante.
+      render: shell
