@@ -22,6 +22,12 @@ if [[ ! -x "$BUNDLE/appimage_manager" ]]; then
   exit 1
 fi
 
+if [[ "${ALLOW_NEW_GLIB:-0}" != "1" ]] &&
+  objdump -T "$BUNDLE/appimage_manager" | grep -qE 'g_once_init_(enter|leave)_pointer'; then
+  echo "O binário exige GLib >= 2.80 e não abre no Ubuntu 22.04. Compile em Ubuntu 22.04 ou defina ALLOW_NEW_GLIB=1." >&2
+  exit 1
+fi
+
 rm -rf "$STAGE"
 install -d \
   "$STAGE/DEBIAN" \
@@ -46,7 +52,7 @@ Section: utils
 Priority: optional
 Architecture: $ARCH
 Installed-Size: $INSTALLED_SIZE
-Depends: libgtk-3-0t64 | libgtk-3-0, libglib2.0-0t64 | libglib2.0-0
+Depends: libgtk-3-0t64 (>= 3.24) | libgtk-3-0 (>= 3.24), libglib2.0-0t64 (>= 2.72) | libglib2.0-0 (>= 2.72)
 Recommends: libfuse2t64 | libfuse2, desktop-file-utils
 Maintainer: Ueslei Nascimento <uesleinasch@users.noreply.github.com>
 Homepage: https://github.com/uesleinasch/AppImageManager
