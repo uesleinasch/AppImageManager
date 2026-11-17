@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:io';
 
@@ -79,10 +80,19 @@ class AppManager extends ChangeNotifier {
   final Map<String, ReleaseInfo> _updates = {};
   bool _loading = true;
   bool _checkingAll = false;
+  bool _repairingAll = false;
   Object? _loadError;
+  Future<void>? _loadFuture;
+  StreamSubscription<FileSystemEvent>? _libraryWatch;
+  StreamSubscription<FileSystemEvent>? _appsWatch;
+  final Set<String> _removing = {};
+  final _missingRemoved = StreamController<String>.broadcast();
+
+  Stream<String> get missingRemoved => _missingRemoved.stream;
 
   bool get loading => _loading;
   bool get checkingAll => _checkingAll;
+  bool get repairingAll => _repairingAll;
   Object? get loadError => _loadError;
 
   UnmodifiableListView<ManagedApp> get apps => UnmodifiableListView(
@@ -95,7 +105,18 @@ class AppManager extends ChangeNotifier {
   ReleaseInfo? updateFor(String id) => _updates[id];
   int get availableUpdates => _updates.length;
 
-  Future<void> load() async {
+  String menuEntryPath(ManagedApp app) {
+    final file = app.menuEntryFile;
+    return file == null
+        ? paths.menuEntryPath(app.id)
+        : paths.applicationEntryPath(file);
+  }
+
+  Future<void> get ready => _loadFuture ?? Future.value();
+
+  Future<void> load() => _loadFuture = _load();
+
+  Future<void> _load() async {
     _loading = true;
     _loadError = null;
     notifyListeners();
@@ -107,6 +128,56 @@ class AppManager extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> watchLibrary() async {
+    if (_libraryWatch != null) return;
+    final dir = Directory(p.dirname(paths.libraryFile));
+    await dir.create(recursive: true);
+    _libraryWatch = dir.watch().listen((event) {
+      final touched = [
+        event.path,
+        if (event is FileSystemMoveEvent) ?event.destination,
+      ].any((path) => p.equals(path, paths.libraryFile));
+      if (touched) unawaited(_reloadIfChangedElsewhere());
+    });
+  }
+
+  Future<void> watchApplications() async {
+    if (_appsWatch != null) return;
+    final dir = Directory(paths.appsDir);
+    await dir.create(recursive: true);
+    _appsWatch = dir
+        .watch(events: FileSystemEvent.delete | FileSystemEvent.move)
+        .listen((_) => unawaited(pruneMissing()));
+  }
+
+  Future<List<String>> pruneMissing() async {
+    final removed = <String>[];
+    for (final app in _apps.toList()) {
+      if (_tasks.containsKey(app.id) || _removing.contains(app.id)) continue;
+      if (await File(app.appImagePath).exists()) continue;
+      try {
+        await remove(app.id, deleteFile: false);
+      } on AppManagerException {
+        continue;
+      }
+      removed.add(app.name);
+      _missingRemoved.add(app.name);
+    }
+    return removed;
+  }
+
+  Future<void> _reloadIfChangedElsewhere() async {
+    final raw = await _repository.readRaw();
+    if (raw == null || raw == _repository.encode(_apps)) return;
+    try {
+      _apps = await _repository.load();
+    } on FormatException {
+      return;
+    }
+    _updates.removeWhere((id, _) => byId(id) == null);
+    notifyListeners();
   }
 
   Future<InstallDraft> prepareInstall(String sourcePath) async {
@@ -164,11 +235,14 @@ class AppManager extends ChangeNotifier {
         categories: draft.metadata.categories,
         execArgs: draft.metadata.execArgs,
         startupWmClass: draft.metadata.startupWmClass,
+        desktopId: draft.metadata.desktopId,
+        mimeTypes: _validMimeTypes(draft.metadata),
         menuEntry: menuEntry,
         autostart: autostart,
         github: github,
       );
-      await _integration.sync(app);
+      await _integration.stashMimePackages(app, draft.metadata.mimePackages);
+      app = await _syncDesktop(app);
       _apps = [..._apps, app];
       await _repository.save(_apps);
 
@@ -196,6 +270,76 @@ class AppManager extends ChangeNotifier {
 
   Future<void> setAutostart(String id, bool enabled) =>
       _commit(_require(id).copyWith(autostart: enabled), syncDesktop: true);
+
+  Future<void> setWindowClass(String id, String? windowClass) async {
+    final value = windowClass?.trim();
+    if (value != null && value.contains(RegExp(r'[\r\n]'))) {
+      throw const AppManagerException(
+        'A classe da janela não pode ter quebras de linha.',
+      );
+    }
+    await _commit(
+      _require(id).copyWith(
+        wmClassOverride: value == null || value.isEmpty ? null : value,
+      ),
+      syncDesktop: true,
+    );
+  }
+
+  Future<void> repairIntegration(String id) async {
+    await _runTask(id, 'Reparando integração', (progress) async {
+      final app = _require(id);
+      if (!await File(app.appImagePath).exists()) {
+        throw AppManagerException(
+          'Arquivo não encontrado: ${app.appImagePath}',
+        );
+      }
+      final stagingDir = await _createStagingDir();
+      try {
+        final metadata = await _inspector.inspect(
+          app.appImagePath,
+          workDir: stagingDir.path,
+          originalFileName: p.basename(app.appImagePath),
+        );
+        final iconPath = await _storeIcon(
+          app.id,
+          metadata.iconFile,
+          app.iconPath,
+        );
+        await _commit(
+          (await _absorb(app, metadata)).copyWith(iconPath: iconPath),
+          syncDesktop: true,
+        );
+      } finally {
+        await _deleteQuietly(stagingDir);
+      }
+    });
+  }
+
+  Future<List<String>> repairAllIntegrations() async {
+    if (_repairingAll) return const [];
+    _repairingAll = true;
+    notifyListeners();
+    final errors = <String>[];
+    try {
+      for (final app in _apps.toList()) {
+        try {
+          await repairIntegration(app.id);
+        } catch (error) {
+          errors.add('${app.name}: $error');
+        }
+      }
+    } finally {
+      _repairingAll = false;
+      notifyListeners();
+    }
+    return errors;
+  }
+
+  Future<void> setFileAssociations(String id, bool enabled) => _commit(
+    _require(id).copyWith(fileAssociations: enabled),
+    syncDesktop: true,
+  );
 
   Future<void> setUpdateSource(String id, GitHubSource? source) async {
     final app = _require(id);
@@ -324,15 +468,20 @@ class AppManager extends ChangeNotifier {
 
   Future<void> remove(String id, {bool deleteFile = true}) async {
     final app = _require(id);
-    await _integration.removeAll(id);
-    if (deleteFile) await _deleteQuietly(File(app.appImagePath));
-    if (app.iconPath != null && p.isWithin(paths.iconsDir, app.iconPath!)) {
-      await _deleteQuietly(File(app.iconPath!));
+    if (!_removing.add(id)) return;
+    try {
+      await _integration.removeAll(app);
+      if (deleteFile) await _deleteQuietly(File(app.appImagePath));
+      if (app.iconPath != null && p.isWithin(paths.iconsDir, app.iconPath!)) {
+        await _deleteQuietly(File(app.iconPath!));
+      }
+      _apps = _apps.where((a) => a.id != id).toList();
+      _updates.remove(id);
+      await _repository.save(_apps);
+      notifyListeners();
+    } finally {
+      _removing.remove(id);
     }
-    _apps = _apps.where((a) => a.id != id).toList();
-    _updates.remove(id);
-    await _repository.save(_apps);
-    notifyListeners();
   }
 
   Future<void> launch(String id) async {
@@ -347,6 +496,24 @@ class AppManager extends ChangeNotifier {
     );
   }
 
+  ManagedApp? byAppImagePath(String path) {
+    final target = p.canonicalize(path);
+    return _apps
+        .where((app) => p.canonicalize(app.appImagePath) == target)
+        .firstOrNull;
+  }
+
+  Future<void> runOnce(String path) async {
+    await AppImageInspector.detectType(path);
+    final result = await _runner.run('chmod', ['u+x', path]);
+    if (!result.succeeded) {
+      throw AppManagerException(
+        'Não foi possível tornar o arquivo executável: ${result.stderr.trim()}',
+      );
+    }
+    await _runner.startDetached(path, const [], workingDirectory: paths.home);
+  }
+
   Future<void> _replaceInstalled(
     ManagedApp app,
     String stagedFile,
@@ -357,21 +524,43 @@ class AppManager extends ChangeNotifier {
     await _placeFile(stagedFile, app.appImagePath);
     final iconPath = await _storeIcon(app.id, metadata.iconFile, app.iconPath);
     await _commit(
-      app.copyWith(
+      (await _absorb(app, metadata, fallbackVersion: fallbackVersion)).copyWith(
         updatedAt: _clock(),
-        version: metadata.version ?? fallbackVersion ?? app.version,
-        comment: metadata.comment ?? app.comment,
         iconPath: iconPath,
-        categories: metadata.categories.isEmpty
-            ? app.categories
-            : metadata.categories,
-        execArgs: metadata.execArgs ?? app.execArgs,
-        startupWmClass: metadata.startupWmClass ?? app.startupWmClass,
         releaseTag: releaseTag,
       ),
       syncDesktop: true,
     );
   }
+
+  Future<ManagedApp> _absorb(
+    ManagedApp app,
+    AppImageMetadata metadata, {
+    String? fallbackVersion,
+  }) async {
+    final readDesktopEntry = metadata.desktopId != null;
+    final updated = app.copyWith(
+      version: metadata.version ?? fallbackVersion ?? app.version,
+      comment: metadata.comment ?? app.comment,
+      categories: metadata.categories.isEmpty
+          ? app.categories
+          : metadata.categories,
+      execArgs: metadata.execArgs ?? app.execArgs,
+      startupWmClass: metadata.startupWmClass ?? app.startupWmClass,
+      desktopId: metadata.desktopId ?? app.desktopId,
+      mimeTypes: readDesktopEntry ? _validMimeTypes(metadata) : null,
+    );
+    if (readDesktopEntry) {
+      await _integration.stashMimePackages(updated, metadata.mimePackages);
+    }
+    return updated;
+  }
+
+  static List<String> _validMimeTypes(AppImageMetadata metadata) => metadata
+      .mimeTypes
+      .where(DesktopIntegration.isValidMimeType)
+      .toSet()
+      .toList();
 
   Future<void> _runTask(
     String id,
@@ -405,10 +594,15 @@ class AppManager extends ChangeNotifier {
   }
 
   Future<void> _commit(ManagedApp updated, {bool syncDesktop = false}) async {
-    if (syncDesktop) await _integration.sync(updated);
+    if (syncDesktop) updated = await _syncDesktop(updated);
     _apps = [for (final app in _apps) app.id == updated.id ? updated : app];
     await _repository.save(_apps);
     notifyListeners();
+  }
+
+  Future<ManagedApp> _syncDesktop(ManagedApp app) async {
+    final menuPath = await _integration.sync(app);
+    return app.copyWith(menuEntryFile: p.basename(menuPath));
   }
 
   Future<String> _uniqueId(String name) async {
@@ -489,6 +683,9 @@ class AppManager extends ChangeNotifier {
 
   @override
   void dispose() {
+    unawaited(_libraryWatch?.cancel());
+    unawaited(_appsWatch?.cancel());
+    unawaited(_missingRemoved.close());
     _github.close();
     super.dispose();
   }

@@ -1,8 +1,34 @@
 import 'dart:io';
 
 import 'package:appimage_manager/src/services/appimage_inspector.dart';
+import 'package:appimage_manager/src/services/process_runner.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+
+class _ExtractingRunner extends ProcessRunner {
+  const _ExtractingRunner(this.files);
+
+  final Map<String, String> files;
+
+  @override
+  Future<ProcessOutput> run(
+    String executable,
+    List<String> arguments, {
+    String? workingDirectory,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    final pattern = RegExp(
+      '^${RegExp.escape(arguments.last).replaceAll(r'\*', '[^/]*')}\$',
+    );
+    for (final entry in files.entries) {
+      if (!pattern.hasMatch(entry.key)) continue;
+      final file = File(p.join(workingDirectory!, 'squashfs-root', entry.key));
+      await file.create(recursive: true);
+      await file.writeAsString(entry.value);
+    }
+    return const ProcessOutput(0, '', '');
+  }
+}
 
 void main() {
   group('guessFromFileName', () {
@@ -92,5 +118,35 @@ void main() {
       'svg',
     );
     expect(AppImageInspector.imageExtension('texto'.codeUnits), isNull);
+  });
+
+  test('inspect guarda o id do .desktop interno', () async {
+    final dir = await Directory.systemTemp.createTemp('inspector-test-');
+    addTearDown(() => dir.delete(recursive: true));
+    final appImage = File(p.join(dir.path, 'PairLAN-0.7.0.AppImage'));
+    await appImage.writeAsBytes([
+      0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0, 0x41, 0x49, 0x02, 0, //
+    ]);
+    final work = await Directory(p.join(dir.path, 'work')).create();
+
+    final metadata =
+        await const AppImageInspector(
+          runner: _ExtractingRunner({
+            'pairlan.desktop':
+                '[Desktop Entry]\nName=PairLAN\nIcon=pairlan\n'
+                'StartupWMClass=PairLAN\nMimeType=application/x-pair;\n',
+            'usr/share/mime/packages/pairlan.xml': '<mime-info/>',
+          }),
+        ).inspect(
+          appImage.path,
+          workDir: work.path,
+          originalFileName: p.basename(appImage.path),
+        );
+
+    expect(metadata.name, 'PairLAN');
+    expect(metadata.desktopId, 'pairlan');
+    expect(metadata.startupWmClass, 'PairLAN');
+    expect(metadata.mimeTypes, ['application/x-pair']);
+    expect(metadata.mimePackages.map(p.basename), ['pairlan.xml']);
   });
 }

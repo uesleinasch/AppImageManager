@@ -23,13 +23,24 @@ class AppRepository {
         .toList();
   }
 
+  String encode(List<ManagedApp> apps) => const JsonEncoder.withIndent('  ')
+      .convert({
+        'schemaVersion': schemaVersion,
+        'apps': apps.map((app) => app.toJson()).toList(),
+      });
+
+  Future<String?> readRaw() async {
+    try {
+      return await File(filePath).readAsString();
+    } on FileSystemException {
+      return null;
+    }
+  }
+
   Future<void> save(List<ManagedApp> apps) async {
     final file = File(filePath);
     await file.parent.create(recursive: true);
-    final content = const JsonEncoder.withIndent('  ').convert({
-      'schemaVersion': schemaVersion,
-      'apps': apps.map((app) => app.toJson()).toList(),
-    });
+    final content = encode(apps);
     final temp = File('$filePath.tmp');
     await temp.writeAsString(content, flush: true);
     await temp.rename(filePath);

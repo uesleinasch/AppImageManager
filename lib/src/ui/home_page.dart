@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 
 import '../app.dart';
+import '../launch_request.dart';
 import '../models/managed_app.dart';
 import '../services/app_manager.dart';
 import 'app_details_page.dart';
@@ -9,9 +13,10 @@ import 'install_dialog.dart';
 import 'widgets/app_icon.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, required this.manager});
+  const HomePage({super.key, required this.manager, this.launch});
 
   final AppManager manager;
+  final LaunchRequest? launch;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -19,11 +24,102 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _search = TextEditingController();
+  StreamSubscription<String>? _missingRemoved;
 
   AppManager get manager => widget.manager;
 
   @override
+  void initState() {
+    super.initState();
+    _missingRemoved = manager.missingRemoved.listen((name) {
+      if (mounted) {
+        showMessage(
+          context,
+          '$name removido: o arquivo .AppImage foi apagado.',
+        );
+      }
+    });
+    final launch = widget.launch;
+    if (launch != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _handle(launch));
+    }
+  }
+
+  Future<void> _handle(LaunchRequest request) async {
+    await manager.ready;
+    if (!mounted) return;
+    switch (request) {
+      case UpdateAppRequest(:final appId):
+        _openById(appId, DetailsAction.update);
+      case RemoveAppRequest(:final appId):
+        _openById(appId, DetailsAction.remove);
+      case InstallFileRequest(:final path):
+        await _openFile(path);
+    }
+  }
+
+  void _openById(String id, DetailsAction action) {
+    if (manager.byId(id) == null) {
+      showMessage(context, 'Aplicativo "$id" não encontrado.', error: true);
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            AppDetailsPage(manager: manager, appId: id, initialAction: action),
+      ),
+    );
+  }
+
+  Future<void> _openFile(String path) async {
+    final managed = manager.byAppImagePath(path);
+    if (managed != null) {
+      await runGuarded(context, () => manager.launch(managed.id));
+      return;
+    }
+    final choice = await showDialog<_FileChoice>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.install_desktop_rounded),
+        title: Text(p.basename(path)),
+        content: const Text(
+          'Integrar move o AppImage para ~/Applications e cria o atalho no '
+          'menu. Abrir uma vez só executa o arquivo onde ele está.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, _FileChoice.runOnce),
+            child: const Text('Abrir uma vez'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, _FileChoice.integrate),
+            child: const Text('Integrar e abrir'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case _FileChoice.runOnce:
+        await runGuarded(context, () => manager.runOnce(path));
+      case _FileChoice.integrate:
+        final app = await showInstallFlow(context, manager, path: path);
+        if (app == null || !mounted) return;
+        await runGuarded(
+          context,
+          () => manager.launch(app.id),
+          success: '${app.name} instalado.',
+        );
+    }
+  }
+
+  @override
   void dispose() {
+    unawaited(_missingRemoved?.cancel());
     _search.dispose();
     super.dispose();
   }
@@ -46,6 +142,16 @@ class _HomePageState extends State<HomePage> {
             ? 'Todos os aplicativos estão atualizados.'
             : '$count atualização(ões) disponível(is).',
       );
+    }
+  }
+
+  Future<void> _repairAll() async {
+    final errors = await manager.repairAllIntegrations();
+    if (!mounted) return;
+    if (errors.isNotEmpty) {
+      showMessage(context, errors.join('\n'), error: true);
+    } else {
+      showMessage(context, 'Integração de todos os aplicativos reparada.');
     }
   }
 
@@ -94,6 +200,20 @@ class _HomePageState extends State<HomePage> {
                           label: Text('${manager.availableUpdates}'),
                           child: const Icon(Icons.update_rounded),
                         ),
+                      ),
+              if (manager.apps.isNotEmpty)
+                manager.repairingAll
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox.square(
+                          dimension: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        ),
+                      )
+                    : IconButton(
+                        tooltip: 'Reparar integração de todos',
+                        onPressed: _repairAll,
+                        icon: const Icon(Icons.build_circle_outlined),
                       ),
               IconButton(
                 tooltip: 'Sobre',
@@ -358,3 +478,5 @@ class _Message extends StatelessWidget {
     );
   }
 }
+
+enum _FileChoice { integrate, runOnce }

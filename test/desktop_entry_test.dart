@@ -103,6 +103,69 @@ Exec=AppRun --new-window
       expect(entry['X-GNOME-Autostart-enabled'], isNull);
     });
 
+    test('StartupWMClass usa a classe personalizada quando existe', () {
+      String? wmClass(ManagedApp value) => DesktopEntry.parse(
+        integration.buildEntry(value, forAutostart: false),
+      )['StartupWMClass'];
+
+      final withOriginal = app.copyWith(startupWmClass: 'Editor');
+      expect(wmClass(withOriginal), 'Editor');
+      expect(
+        wmClass(withOriginal.copyWith(wmClassOverride: 'br.com.editor')),
+        'br.com.editor',
+      );
+    });
+
+    test('lê os tipos declarados em pacote de mime', () {
+      expect(
+        DesktopIntegration.declaredMimeTypes(
+          '<mime-info><mime-type type="a/b"><glob pattern="*.b"/></mime-type>'
+          "<mime-type  type='c/d+json'/></mime-info>",
+        ),
+        {'a/b', 'c/d+json'},
+      );
+      expect(
+        DesktopIntegration.isValidMimeType('application/vnd.x+json'),
+        isTrue,
+      );
+      expect(DesktopIntegration.isValidMimeType('texto'), isFalse);
+    });
+
+    test('ações Atualizar e Remover chamam o AppImage Manager', () {
+      final withActions = DesktopIntegration(
+        AppPaths.underRoot('/home/test'),
+        managerExecutable: '/opt/app image/appimage_manager',
+      );
+      final content = withActions.buildEntry(app, forAutostart: false);
+      final entry = DesktopEntry.parse(content);
+
+      expect(
+        entry['Actions'],
+        'appimagemanager-update;appimagemanager-remove;',
+      );
+      expect(entry['Exec'], contains('editor.AppImage'));
+      expect(
+        content,
+        contains(
+          '[Desktop Action appimagemanager-update]\n'
+          'Name=Atualizar (AppImage Manager)\n'
+          'Exec="/opt/app image/appimage_manager" --update editor\n',
+        ),
+      );
+      expect(content, contains('--remove editor'));
+
+      final autostart = withActions.buildEntry(app, forAutostart: true);
+      expect(DesktopEntry.parse(autostart)['Actions'], isNull);
+      expect(autostart, isNot(contains('Desktop Action')));
+    });
+
+    test('valida id de .desktop', () {
+      expect(DesktopIntegration.isValidDesktopId('dev.acme.Tool_2-x'), isTrue);
+      expect(DesktopIntegration.isValidDesktopId('../evil'), isFalse);
+      expect(DesktopIntegration.isValidDesktopId('a b'), isFalse);
+      expect(DesktopIntegration.isValidDesktopId('appimagemanager-x'), isFalse);
+    });
+
     test('entrada de autostart remove field codes', () {
       final entry = DesktopEntry.parse(
         integration.buildEntry(app, forAutostart: true),

@@ -51,12 +51,21 @@ class AppPaths {
   String get libraryFile => p.join(configDir, 'library.json');
   String get iconsDir => p.join(dataHome, appDirName, 'icons');
   String get applicationsDir => p.join(dataHome, 'applications');
+  String get mimeDir => p.join(dataHome, 'mime');
+  String get mimePackagesDir => p.join(mimeDir, 'packages');
   String get autostartDir => p.join(configHome, 'autostart');
 
   String appImagePath(String id) => p.join(appsDir, '$id.AppImage');
 
+  String mimeStashDir(String id) => p.join(dataHome, appDirName, 'mime', id);
+
+  String mimePackagePrefix(String id) => '$desktopFilePrefix$id--';
+
+  String applicationEntryPath(String fileName) =>
+      p.join(applicationsDir, fileName);
+
   String menuEntryPath(String id) =>
-      p.join(applicationsDir, '$desktopFilePrefix$id.desktop');
+      applicationEntryPath('$desktopFilePrefix$id.desktop');
 
   String autostartEntryPath(String id) =>
       p.join(autostartDir, '$desktopFilePrefix$id.desktop');

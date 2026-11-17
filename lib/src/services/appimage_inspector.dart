@@ -16,6 +16,9 @@ class AppImageMetadata {
     this.execArgs,
     this.startupWmClass,
     this.iconFile,
+    this.desktopId,
+    this.mimeTypes = const [],
+    this.mimePackages = const [],
   });
 
   final String name;
@@ -25,6 +28,9 @@ class AppImageMetadata {
   final String? execArgs;
   final String? startupWmClass;
   final String? iconFile;
+  final String? desktopId;
+  final List<String> mimeTypes;
+  final List<String> mimePackages;
 }
 
 class FileNameGuess {
@@ -117,10 +123,12 @@ class AppImageInspector {
     }
 
     final extraction = _Extraction(this, appImagePath, workDir, root);
-    final entry = await _readDesktopEntry(extraction);
-    if (entry == null) return fallback;
+    final found = await _readDesktopEntry(extraction);
+    if (found == null) return fallback;
+    final (desktopId, entry) = found;
 
     final iconName = entry['Icon'];
+    final mimeTypes = entry.list('MimeType');
     return AppImageMetadata(
       name: entry['Name'] ?? guess.name,
       version: entry['X-AppImage-Version'] ?? guess.version,
@@ -129,10 +137,17 @@ class AppImageInspector {
       execArgs: entry.execArguments,
       startupWmClass: entry['StartupWMClass'],
       iconFile: await _extractIcon(extraction, iconName),
+      desktopId: desktopId,
+      mimeTypes: mimeTypes,
+      mimePackages: mimeTypes.isEmpty
+          ? const []
+          : await _extractMimePackages(extraction),
     );
   }
 
-  Future<DesktopEntry?> _readDesktopEntry(_Extraction extraction) async {
+  Future<(String, DesktopEntry)?> _readDesktopEntry(
+    _Extraction extraction,
+  ) async {
     final dir = Directory(extraction.root);
     if (!await dir.exists()) return null;
     final names = await dir
@@ -144,12 +159,44 @@ class AppImageInspector {
     for (final name in names..sort()) {
       final file = await extraction.materialize(name);
       if (file == null) continue;
-      return DesktopEntry.parse(
-        await File(file).readAsString(),
-        locale: Platform.environment['LANG'],
+      return (
+        p.basenameWithoutExtension(name),
+        DesktopEntry.parse(
+          await File(file).readAsString(),
+          locale: Platform.environment['LANG'],
+        ),
       );
     }
     return null;
+  }
+
+  Future<List<String>> _extractMimePackages(_Extraction extraction) async {
+    try {
+      await _extract(
+        extraction.appImagePath,
+        'usr/share/mime/packages/*.xml',
+        extraction.workDir,
+      );
+    } on ProcessException {
+      return const [];
+    }
+    final dir = Directory(
+      p.join(extraction.root, 'usr', 'share', 'mime', 'packages'),
+    );
+    if (!await dir.exists()) return const [];
+    final names = await dir
+        .list(followLinks: false)
+        .map((entity) => p.basename(entity.path))
+        .where((name) => name.endsWith('.xml'))
+        .toList();
+    final files = <String>[];
+    for (final name in names..sort()) {
+      final file = await extraction.materialize(
+        p.join('usr', 'share', 'mime', 'packages', name),
+      );
+      if (file != null) files.add(file);
+    }
+    return files;
   }
 
   Future<String?> _extractIcon(_Extraction extraction, String? iconName) async {
