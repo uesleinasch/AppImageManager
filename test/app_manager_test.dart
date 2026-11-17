@@ -280,12 +280,10 @@ void main() {
   test('vigia ~/Applications e limpa ao apagar o arquivo', () async {
     final id = await install();
     await manager.watchApplications();
+    final removed = manager.missingRemoved.first;
     await File(manager.byId(id)!.appImagePath).delete();
 
-    final deadline = DateTime.now().add(const Duration(seconds: 3));
-    while (manager.byId(id) != null && DateTime.now().isBefore(deadline)) {
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-    }
+    expect(await removed.timeout(const Duration(seconds: 3)), 'Tool');
     expect(manager.byId(id), isNull);
   });
 
