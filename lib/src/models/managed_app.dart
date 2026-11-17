@@ -20,6 +20,7 @@ class ManagedApp {
     this.menuEntryFile,
     this.mimeTypes = const [],
     this.fileAssociations = true,
+    this.updateInformation,
     this.menuEntry = true,
     this.autostart = false,
     this.github,
@@ -45,6 +46,7 @@ class ManagedApp {
     menuEntryFile: json['menuEntryFile'] as String?,
     mimeTypes: (json['mimeTypes'] as List<dynamic>? ?? const []).cast<String>(),
     fileAssociations: json['fileAssociations'] as bool? ?? true,
+    updateInformation: json['updateInformation'] as String?,
     menuEntry: json['menuEntry'] as bool? ?? true,
     autostart: json['autostart'] as bool? ?? false,
     github: json['github'] == null
@@ -72,6 +74,7 @@ class ManagedApp {
   final String? menuEntryFile;
   final List<String> mimeTypes;
   final bool fileAssociations;
+  final String? updateInformation;
   final bool menuEntry;
   final bool autostart;
   final GitHubSource? github;
@@ -79,6 +82,9 @@ class ManagedApp {
   final DateTime? lastCheckedAt;
 
   bool get usesGitHub => github != null;
+
+  GitHubSource? get suggestedGitHub =>
+      GitHubSource.fromUpdateInformation(updateInformation);
 
   String? get windowClass => wmClassOverride ?? startupWmClass;
 
@@ -97,6 +103,7 @@ class ManagedApp {
     Object? menuEntryFile = _unset,
     List<String>? mimeTypes,
     bool? fileAssociations,
+    Object? updateInformation = _unset,
     bool? menuEntry,
     bool? autostart,
     Object? github = _unset,
@@ -132,6 +139,9 @@ class ManagedApp {
           : menuEntryFile as String?,
       mimeTypes: mimeTypes ?? this.mimeTypes,
       fileAssociations: fileAssociations ?? this.fileAssociations,
+      updateInformation: identical(updateInformation, _unset)
+          ? this.updateInformation
+          : updateInformation as String?,
       menuEntry: menuEntry ?? this.menuEntry,
       autostart: autostart ?? this.autostart,
       github: identical(github, _unset) ? this.github : github as GitHubSource?,
@@ -161,6 +171,7 @@ class ManagedApp {
     if (menuEntryFile != null) 'menuEntryFile': menuEntryFile,
     if (mimeTypes.isNotEmpty) 'mimeTypes': mimeTypes,
     'fileAssociations': fileAssociations,
+    if (updateInformation != null) 'updateInformation': updateInformation,
     'menuEntry': menuEntry,
     'autostart': autostart,
     if (github != null) 'github': github!.toJson(),

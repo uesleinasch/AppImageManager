@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
+import '../models/app_settings.dart';
 import '../models/github_source.dart';
 import '../models/managed_app.dart';
 import 'app_paths.dart';
@@ -13,6 +14,7 @@ import 'appimage_inspector.dart';
 import 'desktop_integration.dart';
 import 'github_release_service.dart';
 import 'process_runner.dart';
+import 'settings_repository.dart';
 import 'version.dart';
 
 class InstallDraft {
@@ -74,8 +76,17 @@ class AppManager extends ChangeNotifier {
   final DesktopIntegration _integration;
   final GitHubReleaseService _github;
   final DateTime Function() _clock;
+  late final _settingsRepository = SettingsRepository(paths.settingsFile);
+
+  static const managerDesktopId =
+      'io.github.uesleinasch.appimage_manager.desktop';
+  static const appImageMimeTypes = [
+    'application/vnd.appimage',
+    'application/x-iso9660-appimage',
+  ];
 
   List<ManagedApp> _apps = [];
+  AppSettings _settings = const AppSettings();
   final Map<String, AppTask> _tasks = {};
   final Map<String, ReleaseInfo> _updates = {};
   bool _loading = true;
@@ -93,6 +104,7 @@ class AppManager extends ChangeNotifier {
   bool get loading => _loading;
   bool get checkingAll => _checkingAll;
   bool get repairingAll => _repairingAll;
+  AppSettings get settings => _settings;
   Object? get loadError => _loadError;
 
   UnmodifiableListView<ManagedApp> get apps => UnmodifiableListView(
@@ -121,6 +133,7 @@ class AppManager extends ChangeNotifier {
     _loadError = null;
     notifyListeners();
     try {
+      _settings = await _settingsRepository.load();
       _apps = await _repository.load();
     } catch (error) {
       _loadError = error;
@@ -141,6 +154,58 @@ class AppManager extends ChangeNotifier {
       ].any((path) => p.equals(path, paths.libraryFile));
       if (touched) unawaited(_reloadIfChangedElsewhere());
     });
+  }
+
+  Future<void> startBackgroundServices() async {
+    await ready;
+    await watchLibrary();
+    if (_settings.cleanupMissing) {
+      await pruneMissing();
+      await watchApplications();
+    }
+  }
+
+  Future<void> updateSettings(AppSettings settings) async {
+    final previous = _settings;
+    _settings = settings;
+    await _settingsRepository.save(settings);
+    notifyListeners();
+    if (settings.cleanupMissing && !previous.cleanupMissing) {
+      await pruneMissing();
+      await watchApplications();
+    } else if (!settings.cleanupMissing && previous.cleanupMissing) {
+      await _appsWatch?.cancel();
+      _appsWatch = null;
+    }
+  }
+
+  Future<bool> isDefaultAppImageHandler() async {
+    try {
+      final result = await _runner.run('xdg-mime', [
+        'query',
+        'default',
+        appImageMimeTypes.first,
+      ]);
+      return result.succeeded && result.stdout.trim() == managerDesktopId;
+    } on ProcessException {
+      return false;
+    }
+  }
+
+  Future<void> makeDefaultAppImageHandler() async {
+    final ProcessOutput result;
+    try {
+      result = await _runner.run('xdg-mime', [
+        'default',
+        managerDesktopId,
+        ...appImageMimeTypes,
+      ]);
+    } on ProcessException catch (error) {
+      throw AppManagerException('Não foi possível rodar xdg-mime: $error');
+    }
+    if (!result.succeeded) {
+      throw AppManagerException('xdg-mime falhou: ${result.stderr.trim()}');
+    }
   }
 
   Future<void> watchApplications() async {
@@ -237,6 +302,7 @@ class AppManager extends ChangeNotifier {
         startupWmClass: draft.metadata.startupWmClass,
         desktopId: draft.metadata.desktopId,
         mimeTypes: _validMimeTypes(draft.metadata),
+        updateInformation: draft.metadata.updateInformation,
         menuEntry: menuEntry,
         autostart: autostart,
         github: github,
@@ -549,6 +615,7 @@ class AppManager extends ChangeNotifier {
       startupWmClass: metadata.startupWmClass ?? app.startupWmClass,
       desktopId: metadata.desktopId ?? app.desktopId,
       mimeTypes: readDesktopEntry ? _validMimeTypes(metadata) : null,
+      updateInformation: metadata.updateInformation,
     );
     if (readDesktopEntry) {
       await _integration.stashMimePackages(updated, metadata.mimePackages);

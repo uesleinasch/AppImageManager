@@ -49,6 +49,7 @@ class AppPaths {
   String get appsDir => p.join(home, 'Applications');
   String get configDir => p.join(configHome, appDirName);
   String get libraryFile => p.join(configDir, 'library.json');
+  String get settingsFile => p.join(configDir, 'settings.json');
   String get iconsDir => p.join(dataHome, appDirName, 'icons');
   String get applicationsDir => p.join(dataHome, 'applications');
   String get mimeDir => p.join(dataHome, 'mime');

@@ -19,13 +19,7 @@ void main(List<String> args) {
       managerExecutable: Platform.resolvedExecutable,
     ),
   )..load();
-  unawaited(manager.watchLibrary());
-  unawaited(
-    manager.ready.then((_) async {
-      await manager.pruneMissing();
-      await manager.watchApplications();
-    }),
-  );
+  unawaited(manager.startBackgroundServices());
   runApp(
     AppImageManagerApp(manager: manager, launch: LaunchRequest.parse(args)),
   );

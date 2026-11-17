@@ -10,6 +10,7 @@ import '../services/app_manager.dart';
 import 'app_details_page.dart';
 import 'feedback.dart';
 import 'install_dialog.dart';
+import 'settings_page.dart';
 import 'widgets/app_icon.dart';
 
 class HomePage extends StatefulWidget {
@@ -40,9 +41,15 @@ class _HomePageState extends State<HomePage> {
       }
     });
     final launch = widget.launch;
-    if (launch != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _handle(launch));
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await manager.ready;
+      if (!mounted) return;
+      if (manager.settings.checkUpdatesOnStart &&
+          manager.apps.any((a) => a.usesGitHub)) {
+        unawaited(_checkAll());
+      }
+      if (launch != null) await _handle(launch);
+    });
   }
 
   Future<void> _handle(LaunchRequest request) async {
@@ -155,6 +162,12 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => SettingsPage(manager: manager)),
+    );
+  }
+
   void _openDetails(ManagedApp app) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -215,6 +228,11 @@ class _HomePageState extends State<HomePage> {
                         onPressed: _repairAll,
                         icon: const Icon(Icons.build_circle_outlined),
                       ),
+              IconButton(
+                tooltip: 'Configurações',
+                onPressed: _openSettings,
+                icon: const Icon(Icons.settings_outlined),
+              ),
               IconButton(
                 tooltip: 'Sobre',
                 onPressed: _about,

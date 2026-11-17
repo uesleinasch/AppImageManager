@@ -44,6 +44,7 @@ AppImages são práticos, mas ficam soltos na pasta de downloads: sem ícone no 
 | --- | --- |
 | AppImages gerenciados | `~/Applications/<id>.AppImage` |
 | Biblioteca (configuração) | `~/.config/appimage-manager/library.json` |
+| Configurações | `~/.config/appimage-manager/settings.json` |
 | Ícones extraídos | `~/.local/share/appimage-manager/icons/` |
 | Atalhos do menu | `~/.local/share/applications/<id do .desktop original>.desktop` ou, se esse nome já estiver em uso, `appimagemanager-<id>.desktop` |
 | Tipos de arquivo | `~/.local/share/mime/packages/appimagemanager-<id>--*.xml` (cópia em `~/.local/share/appimage-manager/mime/<id>/`) |

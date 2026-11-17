@@ -530,6 +530,25 @@ class _UpdatesSectionState extends State<_UpdatesSection> {
                 : (value) => _changeMode(value.first),
           ),
         ),
+        if (source == null && app.suggestedGitHub != null)
+          ListTile(
+            leading: const Icon(Icons.tips_and_updates_outlined),
+            title: Text(
+              'O AppImage indica atualizações pelo GitHub: '
+              '${app.suggestedGitHub!.slug}',
+            ),
+            subtitle: Text(app.updateInformation!),
+            trailing: TextButton(
+              onPressed: disabled
+                  ? null
+                  : () => runGuarded(
+                      context,
+                      () =>
+                          manager.setUpdateSource(app.id, app.suggestedGitHub),
+                    ),
+              child: const Text('Usar'),
+            ),
+          ),
         if (source != null) ...[
           ListTile(
             leading: const Icon(Icons.code_rounded),

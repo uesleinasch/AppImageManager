@@ -18,6 +18,35 @@ class GitHubSource {
   );
   static final _repoPattern = RegExp(r'^[A-Za-z0-9_.-]+$');
 
+  static final _zsyncLatestUrl = RegExp(
+    r'^https://github\.com/([^/]+)/([^/]+)/releases/latest/download/([^/]+)\.zsync$',
+  );
+
+  static GitHubSource? fromUpdateInformation(String? information) {
+    final parts = (information ?? '').trim().split('|');
+    if (parts.length == 5 && parts[0] == 'gh-releases-zsync') {
+      final channel = parts[3];
+      if (!const {'latest', 'latest-pre', 'latest-all'}.contains(channel)) {
+        return null;
+      }
+      final pattern = parts[4].replaceFirst(RegExp(r'\.zsync$'), '');
+      return tryParse(
+        '${parts[1]}/${parts[2]}',
+        assetPattern: pattern == '*' ? null : pattern,
+        includePrereleases: channel != 'latest',
+      );
+    }
+    if (parts.length == 2 && parts[0] == 'zsync') {
+      final match = _zsyncLatestUrl.firstMatch(parts[1]);
+      if (match == null) return null;
+      return tryParse(
+        '${match[1]}/${match[2]}',
+        assetPattern: Uri.decodeComponent(match[3]!),
+      );
+    }
+    return null;
+  }
+
   static GitHubSource? tryParse(
     String input, {
     String? assetPattern,

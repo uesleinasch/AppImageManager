@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+import '../models/github_source.dart';
 import '../models/managed_app.dart';
 import '../services/app_manager.dart';
 import 'feedback.dart';
@@ -95,7 +96,13 @@ class _InstallDialogState extends State<InstallDialog> {
   var _menuEntry = true;
   var _autostart = false;
   var _removeOriginal = false;
-  var _github = const GitHubSourceInput(source: null, isEmpty: true);
+  late final _suggested = GitHubSource.fromUpdateInformation(
+    widget.draft.metadata.updateInformation,
+  );
+  late var _github = GitHubSourceInput(
+    source: _suggested,
+    isEmpty: _suggested == null,
+  );
   var _busy = false;
 
   @override
@@ -201,7 +208,7 @@ class _InstallDialogState extends State<InstallDialog> {
               Text('Atualizações', style: theme.textTheme.titleSmall),
               const SizedBox(height: 12),
               GitHubSourceFields(
-                initial: null,
+                initial: _suggested,
                 optional: true,
                 onChanged: (value) => setState(() => _github = value),
               ),

@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:appimage_manager/src/models/app_settings.dart';
 import 'package:appimage_manager/src/models/github_source.dart';
 import 'package:appimage_manager/src/services/app_manager.dart';
 import 'package:appimage_manager/src/services/app_paths.dart';
 import 'package:appimage_manager/src/services/appimage_inspector.dart';
 import 'package:appimage_manager/src/services/desktop_entry.dart';
 import 'package:appimage_manager/src/services/github_release_service.dart';
+import 'package:appimage_manager/src/services/process_runner.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -40,6 +42,24 @@ class _FakeInspector extends AppImageInspector {
       mimeTypes: mimeTypes,
       mimePackages: packages,
     );
+  }
+}
+
+class _RecordingRunner extends ProcessRunner {
+  _RecordingRunner(this.stdout);
+
+  final String stdout;
+  final calls = <List<String>>[];
+
+  @override
+  Future<ProcessOutput> run(
+    String executable,
+    List<String> arguments, {
+    String? workingDirectory,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    calls.add([executable, ...arguments]);
+    return ProcessOutput(0, stdout, '');
   }
 }
 
@@ -279,6 +299,50 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 200));
 
     expect(manager.byId(id)?.version, '1.4.0');
+  });
+
+  test('configurações persistem entre instâncias', () async {
+    expect(manager.settings.cleanupMissing, isTrue);
+    expect(manager.settings.checkUpdatesOnStart, isFalse);
+
+    await manager.updateSettings(
+      const AppSettings(checkUpdatesOnStart: true, cleanupMissing: false),
+    );
+
+    final reloaded = AppManager(paths: paths);
+    await reloaded.load();
+    expect(reloaded.settings.checkUpdatesOnStart, isTrue);
+    expect(reloaded.settings.cleanupMissing, isFalse);
+    reloaded.dispose();
+  });
+
+  test('sem limpeza automática, app sem arquivo continua na lista', () async {
+    final id = await install();
+    await manager.updateSettings(const AppSettings(cleanupMissing: false));
+    await File(manager.byId(id)!.appImagePath).delete();
+
+    await manager.startBackgroundServices();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+
+    expect(manager.byId(id), isNotNull);
+  });
+
+  test('handler padrão de AppImage usa xdg-mime', () async {
+    final runner = _RecordingRunner(
+      'io.github.uesleinasch.appimage_manager.desktop\n',
+    );
+    final withRunner = AppManager(paths: paths, runner: runner);
+
+    expect(await withRunner.isDefaultAppImageHandler(), isTrue);
+    await withRunner.makeDefaultAppImageHandler();
+    expect(runner.calls.last, [
+      'xdg-mime',
+      'default',
+      'io.github.uesleinasch.appimage_manager.desktop',
+      'application/vnd.appimage',
+      'application/x-iso9660-appimage',
+    ]);
+    withRunner.dispose();
   });
 
   test('prepareInstall rejeita arquivos que não são AppImage', () async {

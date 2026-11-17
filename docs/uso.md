@@ -87,3 +87,13 @@ Use o ícone de lixeira. O atalho, o início automático e o ícone extraído s�
 ### Apagar o arquivo direto da pasta
 
 Também dá para remover apagando o `.AppImage` de `~/Applications`. O atalho tem `TryExec`, então o menu o esconde na hora, mesmo com o AppImage Manager fechado. Na próxima vez que o AppImage Manager abrir (ou na hora, se ele estiver aberto), o resto é limpo: início automático, ícone, tipos de arquivo e a entrada na lista. Um aviso mostra o que foi removido.
+
+## Configurações
+
+O ícone de engrenagem na tela inicial abre as configurações:
+
+- **Verificar atualizações ao abrir**: consulta o GitHub dos apps vinculados sempre que o AppImage Manager abre. Desligado por padrão.
+- **Limpar apps cujo arquivo foi apagado**: a limpeza descrita acima. Ligado por padrão.
+- **Abrir arquivos .AppImage com o AppImage Manager**: roda `xdg-mime default io.github.uesleinasch.appimage_manager.desktop application/vnd.appimage application/x-iso9660-appimage`. Depois disso, o duplo clique num `.AppImage` oferece **Integrar e abrir**. Requer o pacote `.deb` instalado.
+
+As configurações ficam em `~/.config/appimage-manager/settings.json`.
