@@ -345,6 +345,78 @@ void main() {
     withRunner.dispose();
   });
 
+  group('tipos de arquivo manuais', () {
+    late String id;
+
+    setUp(() async {
+      File(p.join(paths.mimeDir, 'globs2'))
+        ..createSync(recursive: true)
+        ..writeAsStringSync('50:text/markdown:*.md\n');
+      id = await install();
+    });
+
+    Future<DesktopEntry> menuEntry() async =>
+        DesktopEntry.parse(await File(paths.menuEntryPath(id)).readAsString());
+
+    File manualPackage() => File(
+      p.join(paths.mimePackagesDir, '${paths.mimePackagePrefix(id)}manual.xml'),
+    );
+
+    test('extensão conhecida usa o tipo do sistema e adiciona %F', () async {
+      expect(await manager.addFileType(id, '.md'), 'text/markdown');
+
+      final app = manager.byId(id)!;
+      expect(app.customMimeTypes, ['text/markdown']);
+      expect(app.customTypeGlobs, isEmpty);
+      final entry = await menuEntry();
+      expect(entry['MimeType'], 'text/markdown;');
+      expect(entry['Exec'], '${app.appImagePath} %F');
+      expect(await manualPackage().exists(), isFalse);
+    });
+
+    test('extensão desconhecida cria tipo próprio com pacote XML', () async {
+      expect(
+        await manager.addFileType(id, '*.Zzz'),
+        'application/x-appimagemanager-zzz',
+      );
+
+      expect(manager.byId(id)!.customTypeGlobs, {
+        'application/x-appimagemanager-zzz': '*.zzz',
+      });
+      expect(await manualPackage().readAsString(), contains('*.zzz'));
+      expect(
+        (await menuEntry())['MimeType'],
+        'application/x-appimagemanager-zzz;',
+      );
+    });
+
+    test('tipo MIME direto, duplicado e entrada inválida', () async {
+      await manager.addFileType(id, 'Text/Plain');
+      expect(manager.byId(id)!.customMimeTypes, ['text/plain']);
+      expect(
+        () => manager.addFileType(id, 'text/plain'),
+        throwsA(isA<AppManagerException>()),
+      );
+      expect(
+        () => manager.addFileType(id, 'nada válido!'),
+        throwsA(isA<AppManagerException>()),
+      );
+    });
+
+    test('remover tipo manual limpa MimeType, %F e pacote', () async {
+      final type = await manager.addFileType(id, '.zzz');
+      await manager.removeFileType(id, type);
+
+      final app = manager.byId(id)!;
+      expect(app.customMimeTypes, isEmpty);
+      expect(app.customTypeGlobs, isEmpty);
+      final entry = await menuEntry();
+      expect(entry['MimeType'], isNull);
+      expect(entry['Exec'], app.appImagePath);
+      expect(await manualPackage().exists(), isFalse);
+    });
+  });
+
   test('prepareInstall rejeita arquivos que não são AppImage', () async {
     final text = p.join(root.path, 'nota.txt');
     await File(text).writeAsString('não sou um AppImage');

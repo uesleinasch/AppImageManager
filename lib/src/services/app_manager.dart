@@ -13,6 +13,7 @@ import 'app_repository.dart';
 import 'appimage_inspector.dart';
 import 'desktop_integration.dart';
 import 'github_release_service.dart';
+import 'mime_database.dart';
 import 'process_runner.dart';
 import 'settings_repository.dart';
 import 'version.dart';
@@ -77,6 +78,7 @@ class AppManager extends ChangeNotifier {
   final GitHubReleaseService _github;
   final DateTime Function() _clock;
   late final _settingsRepository = SettingsRepository(paths.settingsFile);
+  late final _mimeDatabase = MimeDatabase(paths);
 
   static const managerDesktopId =
       'io.github.uesleinasch.appimage_manager.desktop';
@@ -406,6 +408,59 @@ class AppManager extends ChangeNotifier {
     _require(id).copyWith(fileAssociations: enabled),
     syncDesktop: true,
   );
+
+  Future<String> addFileType(String id, String input) async {
+    final value = input.trim();
+    final String type;
+    String? glob;
+    if (DesktopIntegration.isValidMimeType(value)) {
+      type = value.toLowerCase();
+    } else {
+      final extension = MimeDatabase.normalizeExtension(value);
+      if (extension == null) {
+        throw const AppManagerException(
+          'Use uma extensão (.md) ou um tipo MIME (text/markdown).',
+        );
+      }
+      final known = await _mimeDatabase.typeForExtension(extension);
+      if (known != null && !known.startsWith(MimeDatabase.customTypePrefix)) {
+        type = known;
+      } else {
+        type = MimeDatabase.customTypeFor(extension);
+        glob = '*.$extension';
+      }
+    }
+
+    final app = _require(id);
+    if (app.allMimeTypes.contains(type)) {
+      throw AppManagerException('$type já está associado a ${app.name}.');
+    }
+    await _commit(
+      app.copyWith(
+        customMimeTypes: [...app.customMimeTypes, type],
+        customTypeGlobs: glob == null
+            ? null
+            : {...app.customTypeGlobs, type: glob},
+        fileAssociations: true,
+      ),
+      syncDesktop: true,
+    );
+    return type;
+  }
+
+  Future<void> removeFileType(String id, String type) {
+    final app = _require(id);
+    return _commit(
+      app.copyWith(
+        customMimeTypes: [
+          for (final custom in app.customMimeTypes)
+            if (custom != type) custom,
+        ],
+        customTypeGlobs: {...app.customTypeGlobs}..remove(type),
+      ),
+      syncDesktop: true,
+    );
+  }
 
   Future<void> setUpdateSource(String id, GitHubSource? source) async {
     final app = _require(id);

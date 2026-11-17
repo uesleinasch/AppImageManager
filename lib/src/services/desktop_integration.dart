@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import '../models/managed_app.dart';
 import 'app_paths.dart';
 import 'desktop_entry.dart';
+import 'mime_database.dart';
 import 'process_runner.dart';
 
 class DesktopIntegration {
@@ -40,11 +41,19 @@ class DesktopIntegration {
     for (final match in _declaredMimeType.allMatches(xml)) match[1]!,
   };
 
+  static bool _opensFiles(ManagedApp app) =>
+      app.fileAssociations && app.allMimeTypes.isNotEmpty;
+
   String buildEntry(ManagedApp app, {required bool forAutostart}) {
-    final args = DesktopEntry.splitExec(app.execArgs ?? '')
-        .where((arg) => !forAutostart || !_fieldCode.hasMatch(arg))
-        .map(DesktopEntry.quoteExecArg)
-        .join(' ');
+    final args = [
+      ...DesktopEntry.splitExec(app.execArgs ?? '')
+          .where((arg) => !forAutostart || !_fieldCode.hasMatch(arg))
+          .map(DesktopEntry.quoteExecArg),
+      if (!forAutostart &&
+          _opensFiles(app) &&
+          !MimeDatabase.acceptsFiles(app.execArgs))
+        '%F',
+    ].join(' ');
     final exec = [
       DesktopEntry.quoteExecArg(app.appImagePath),
       if (args.isNotEmpty) args,
@@ -70,9 +79,9 @@ class DesktopIntegration {
         if (app.categories.isNotEmpty)
           'Categories':
               '${app.categories.map(DesktopEntry.escapeValue).join(';')};',
-        if (!forAutostart && app.fileAssociations && app.mimeTypes.isNotEmpty)
+        if (!forAutostart && _opensFiles(app))
           'MimeType':
-              '${app.mimeTypes.map(DesktopEntry.escapeValue).join(';')};',
+              '${app.allMimeTypes.map(DesktopEntry.escapeValue).join(';')};',
         if (app.windowClass != null)
           'StartupWMClass': DesktopEntry.escapeValue(app.windowClass!),
         if (app.version != null)
@@ -157,14 +166,24 @@ class DesktopIntegration {
 
   Future<void> _syncMimePackages(ManagedApp app) async {
     final prefix = paths.mimePackagePrefix(app.id);
-    final desired = <String, File>{};
+    final desired = <String, String>{};
+    final active = app.fileAssociations && app.menuEntry;
     final stash = Directory(paths.mimeStashDir(app.id));
-    if (app.fileAssociations && app.menuEntry && await stash.exists()) {
+    if (active && await stash.exists()) {
       await for (final entity in stash.list(followLinks: false)) {
         if (entity is File && entity.path.endsWith('.xml')) {
-          desired['$prefix${p.basename(entity.path)}'] = entity;
+          desired['$prefix${p.basename(entity.path)}'] = await entity
+              .readAsString();
         }
       }
+    }
+    final custom = {
+      for (final MapEntry(key: type, value: glob)
+          in app.customTypeGlobs.entries)
+        if (app.customMimeTypes.contains(type)) type: glob,
+    };
+    if (active && custom.isNotEmpty) {
+      desired['${prefix}manual.xml'] = MimeDatabase.packageXml(custom);
     }
 
     var changed = false;
@@ -180,9 +199,8 @@ class DesktopIntegration {
         }
       }
     }
-    for (final MapEntry(key: name, value: source) in desired.entries) {
+    for (final MapEntry(key: name, value: content) in desired.entries) {
       final target = File(p.join(paths.mimePackagesDir, name));
-      final content = await source.readAsString();
       if (await target.exists() && await target.readAsString() == content) {
         continue;
       }
