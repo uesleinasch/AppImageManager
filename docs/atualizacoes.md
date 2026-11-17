@@ -22,6 +22,17 @@ Selecione **GitHub Releases** e informe:
 | Padrão do arquivo | `*x86_64.AppImage` | Escolhe o asset quando o release tem vários `.AppImage` |
 | Incluir pré-lançamentos | ligado/desligado | Considera releases marcados como *pre-release* |
 
+### Configuração automática pela informação embutida
+
+Muitos AppImages trazem, na seção ELF `.upd_info`, a informação usada pelo AppImageUpdate. O AppImage Manager lê essa seção direto do arquivo, sem executá-lo, e entende dois formatos:
+
+- `gh-releases-zsync|dono|repo|latest|Padrão-*.AppImage.zsync`, que vira `dono/repo` com o padrão de arquivo sem o `.zsync` (`latest-pre` e `latest-all` incluem pré-lançamentos);
+- `zsync|https://github.com/dono/repo/releases/latest/download/Arquivo.AppImage.zsync`.
+
+Na instalação, os campos do GitHub já vêm preenchidos. Em apps no modo manual, a seção **Atualizações** mostra a sugestão com o botão **Usar**.
+
+A atualização baixa o arquivo inteiro. O download parcial (delta) do zsync não é usado.
+
 ### Verificar e aplicar
 
 - **Verificar agora** consulta o último release daquele aplicativo.

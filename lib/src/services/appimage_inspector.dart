@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
 
@@ -19,6 +21,7 @@ class AppImageMetadata {
     this.desktopId,
     this.mimeTypes = const [],
     this.mimePackages = const [],
+    this.updateInformation,
   });
 
   final String name;
@@ -31,6 +34,7 @@ class AppImageMetadata {
   final String? desktopId;
   final List<String> mimeTypes;
   final List<String> mimePackages;
+  final String? updateInformation;
 }
 
 class FileNameGuess {
@@ -92,6 +96,86 @@ class AppImageInspector {
     }
   }
 
+  static Future<String?> readUpdateInformation(String path) async {
+    final file = await File(path).open();
+    try {
+      final header = await file.read(64);
+      if (header.length < 52 ||
+          header[0] != 0x7f ||
+          header[1] != 0x45 ||
+          header[2] != 0x4c ||
+          header[3] != 0x46) {
+        return null;
+      }
+      final is64 = header[4] == 2;
+      final endian = header[5] == 1 ? Endian.little : Endian.big;
+      final h = ByteData.sublistView(header);
+      if (is64 && header.length < 64) return null;
+      final sectionTable = is64
+          ? h.getUint64(0x28, endian)
+          : h.getUint32(0x20, endian);
+      final entrySize = h.getUint16(is64 ? 0x3a : 0x2e, endian);
+      final count = h.getUint16(is64 ? 0x3c : 0x30, endian);
+      final namesIndex = h.getUint16(is64 ? 0x3e : 0x32, endian);
+      if (count == 0 || entrySize < (is64 ? 64 : 40) || namesIndex >= count) {
+        return null;
+      }
+
+      await file.setPosition(sectionTable);
+      final table = await file.read(entrySize * count);
+      if (table.length < entrySize * count) return null;
+      final t = ByteData.sublistView(table);
+      ({int name, int offset, int size}) section(int index) {
+        final base = index * entrySize;
+        return (
+          name: t.getUint32(base, endian),
+          offset: is64
+              ? t.getUint64(base + 0x18, endian)
+              : t.getUint32(base + 0x10, endian),
+          size: is64
+              ? t.getUint64(base + 0x20, endian)
+              : t.getUint32(base + 0x14, endian),
+        );
+      }
+
+      Future<Uint8List?> readAt(int offset, int size, int limit) async {
+        if (size <= 0 || size > limit) return null;
+        await file.setPosition(offset);
+        final bytes = await file.read(size);
+        return bytes.length == size ? bytes : null;
+      }
+
+      final names = section(namesIndex);
+      final nameTable = await readAt(names.offset, names.size, 1 << 20);
+      if (nameTable == null) return null;
+      for (var i = 0; i < count; i++) {
+        final entry = section(i);
+        if (entry.name >= nameTable.length) continue;
+        final end = nameTable.indexOf(0, entry.name);
+        final name = ascii.decode(
+          nameTable.sublist(entry.name, end < 0 ? nameTable.length : end),
+          allowInvalid: true,
+        );
+        if (name != '.upd_info') continue;
+        final data = await readAt(entry.offset, entry.size, 8192);
+        if (data == null) return null;
+        final terminator = data.indexOf(0);
+        final value = utf8
+            .decode(
+              terminator < 0 ? data : data.sublist(0, terminator),
+              allowMalformed: true,
+            )
+            .trim();
+        return value.isEmpty ? null : value;
+      }
+      return null;
+    } on RangeError {
+      return null;
+    } finally {
+      await file.close();
+    }
+  }
+
   static String? imageExtension(List<int> bytes) {
     if (bytes.length >= 4 &&
         bytes[0] == 0x89 &&
@@ -111,9 +195,15 @@ class AppImageInspector {
     required String originalFileName,
   }) async {
     final guess = guessFromFileName(originalFileName);
-    final fallback = AppImageMetadata(name: guess.name, version: guess.version);
+    final type = await detectType(appImagePath);
+    final updateInformation = await readUpdateInformation(appImagePath);
+    final fallback = AppImageMetadata(
+      name: guess.name,
+      version: guess.version,
+      updateInformation: updateInformation,
+    );
 
-    if (await detectType(appImagePath) != AppImageType.type2) return fallback;
+    if (type != AppImageType.type2) return fallback;
 
     final root = p.join(workDir, 'squashfs-root');
     try {
@@ -142,6 +232,7 @@ class AppImageInspector {
       mimePackages: mimeTypes.isEmpty
           ? const []
           : await _extractMimePackages(extraction),
+      updateInformation: updateInformation,
     );
   }
 
