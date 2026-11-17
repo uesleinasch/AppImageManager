@@ -15,6 +15,11 @@ class ManagedApp {
     this.categories = const [],
     this.execArgs,
     this.startupWmClass,
+    this.wmClassOverride,
+    this.desktopId,
+    this.menuEntryFile,
+    this.mimeTypes = const [],
+    this.fileAssociations = true,
     this.menuEntry = true,
     this.autostart = false,
     this.github,
@@ -35,6 +40,11 @@ class ManagedApp {
         .cast<String>(),
     execArgs: json['execArgs'] as String?,
     startupWmClass: json['startupWmClass'] as String?,
+    wmClassOverride: json['wmClassOverride'] as String?,
+    desktopId: json['desktopId'] as String?,
+    menuEntryFile: json['menuEntryFile'] as String?,
+    mimeTypes: (json['mimeTypes'] as List<dynamic>? ?? const []).cast<String>(),
+    fileAssociations: json['fileAssociations'] as bool? ?? true,
     menuEntry: json['menuEntry'] as bool? ?? true,
     autostart: json['autostart'] as bool? ?? false,
     github: json['github'] == null
@@ -57,6 +67,11 @@ class ManagedApp {
   final List<String> categories;
   final String? execArgs;
   final String? startupWmClass;
+  final String? wmClassOverride;
+  final String? desktopId;
+  final String? menuEntryFile;
+  final List<String> mimeTypes;
+  final bool fileAssociations;
   final bool menuEntry;
   final bool autostart;
   final GitHubSource? github;
@@ -64,6 +79,8 @@ class ManagedApp {
   final DateTime? lastCheckedAt;
 
   bool get usesGitHub => github != null;
+
+  String? get windowClass => wmClassOverride ?? startupWmClass;
 
   ManagedApp copyWith({
     String? name,
@@ -75,6 +92,11 @@ class ManagedApp {
     List<String>? categories,
     Object? execArgs = _unset,
     Object? startupWmClass = _unset,
+    Object? wmClassOverride = _unset,
+    Object? desktopId = _unset,
+    Object? menuEntryFile = _unset,
+    List<String>? mimeTypes,
+    bool? fileAssociations,
     bool? menuEntry,
     bool? autostart,
     Object? github = _unset,
@@ -99,6 +121,17 @@ class ManagedApp {
       startupWmClass: identical(startupWmClass, _unset)
           ? this.startupWmClass
           : startupWmClass as String?,
+      wmClassOverride: identical(wmClassOverride, _unset)
+          ? this.wmClassOverride
+          : wmClassOverride as String?,
+      desktopId: identical(desktopId, _unset)
+          ? this.desktopId
+          : desktopId as String?,
+      menuEntryFile: identical(menuEntryFile, _unset)
+          ? this.menuEntryFile
+          : menuEntryFile as String?,
+      mimeTypes: mimeTypes ?? this.mimeTypes,
+      fileAssociations: fileAssociations ?? this.fileAssociations,
       menuEntry: menuEntry ?? this.menuEntry,
       autostart: autostart ?? this.autostart,
       github: identical(github, _unset) ? this.github : github as GitHubSource?,
@@ -123,6 +156,11 @@ class ManagedApp {
     if (categories.isNotEmpty) 'categories': categories,
     if (execArgs != null) 'execArgs': execArgs,
     if (startupWmClass != null) 'startupWmClass': startupWmClass,
+    if (wmClassOverride != null) 'wmClassOverride': wmClassOverride,
+    if (desktopId != null) 'desktopId': desktopId,
+    if (menuEntryFile != null) 'menuEntryFile': menuEntryFile,
+    if (mimeTypes.isNotEmpty) 'mimeTypes': mimeTypes,
+    'fileAssociations': fileAssociations,
     'menuEntry': menuEntry,
     'autostart': autostart,
     if (github != null) 'github': github!.toJson(),

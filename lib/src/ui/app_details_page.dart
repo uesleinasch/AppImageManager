@@ -6,11 +6,38 @@ import 'feedback.dart';
 import 'github_source_dialog.dart';
 import 'widgets/app_icon.dart';
 
-class AppDetailsPage extends StatelessWidget {
-  const AppDetailsPage({super.key, required this.manager, required this.appId});
+enum DetailsAction { update, remove }
+
+class AppDetailsPage extends StatefulWidget {
+  const AppDetailsPage({
+    super.key,
+    required this.manager,
+    required this.appId,
+    this.initialAction,
+  });
 
   final AppManager manager;
   final String appId;
+  final DetailsAction? initialAction;
+
+  @override
+  State<AppDetailsPage> createState() => _AppDetailsPageState();
+}
+
+class _AppDetailsPageState extends State<AppDetailsPage> {
+  AppManager get manager => widget.manager;
+  String get appId => widget.appId;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialAction == DetailsAction.remove) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final app = manager.byId(appId);
+        if (app != null && mounted) _remove(context, app);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,7 +84,7 @@ class AppDetailsPage extends StatelessWidget {
                       SwitchListTile(
                         secondary: const Icon(Icons.menu_open_rounded),
                         title: const Text('Atalho no menu de aplicativos'),
-                        subtitle: Text(manager.paths.menuEntryPath(app.id)),
+                        subtitle: Text(manager.menuEntryPath(app)),
                         value: app.menuEntry,
                         onChanged: busy
                             ? null
@@ -80,10 +107,59 @@ class AppDetailsPage extends StatelessWidget {
                                 () => manager.setAutostart(app.id, value),
                               ),
                       ),
+                      SwitchListTile(
+                        secondary: const Icon(Icons.file_open_outlined),
+                        title: const Text('Abrir tipos de arquivo associados'),
+                        subtitle: Text(
+                          app.mimeTypes.isEmpty
+                              ? 'O AppImage não declara tipos de arquivo'
+                              : app.menuEntry
+                              ? app.mimeTypes.join(', ')
+                              : 'Requer o atalho no menu',
+                        ),
+                        value:
+                            app.fileAssociations &&
+                            app.menuEntry &&
+                            app.mimeTypes.isNotEmpty,
+                        onChanged:
+                            busy || !app.menuEntry || app.mimeTypes.isEmpty
+                            ? null
+                            : (value) => runGuarded(
+                                context,
+                                () =>
+                                    manager.setFileAssociations(app.id, value),
+                              ),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.web_asset_rounded),
+                        title: const Text('Classe da janela (StartupWMClass)'),
+                        subtitle: Text(_windowClassLabel(app)),
+                        trailing: const Icon(Icons.edit_outlined),
+                        enabled: !busy,
+                        onTap: () => _editWindowClass(context, app),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.build_circle_outlined),
+                        title: const Text('Reparar integração'),
+                        subtitle: const Text(
+                          'Relê o AppImage e regrava ícone e atalhos',
+                        ),
+                        enabled: !busy,
+                        onTap: () => runGuarded(
+                          context,
+                          () => manager.repairIntegration(app.id),
+                          success: 'Integração de ${app.name} reparada.',
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  _UpdatesSection(app: app, manager: manager, busy: busy),
+                  _UpdatesSection(
+                    app: app,
+                    manager: manager,
+                    busy: busy,
+                    autoUpdate: widget.initialAction == DetailsAction.update,
+                  ),
                   const SizedBox(height: 16),
                   _Section(
                     title: 'Informações',
@@ -123,6 +199,65 @@ class AppDetailsPage extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  static String _windowClassLabel(ManagedApp app) {
+    final original = app.startupWmClass;
+    final custom = app.wmClassOverride;
+    if (custom == null) return original ?? 'Não definida';
+    return '$custom (personalizada; original: ${original ?? 'nenhuma'})';
+  }
+
+  Future<void> _editWindowClass(BuildContext context, ManagedApp app) async {
+    final controller = TextEditingController(text: app.windowClass ?? '');
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Classe da janela'),
+        content: SizedBox(
+          width: 420,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: 'StartupWMClass',
+              hintText: app.startupWmClass,
+              helperText:
+                  'Use quando a dock mostra um ícone genérico. Deve ser igual '
+                  'ao app_id (Wayland) ou ao WM_CLASS (X11) da janela.',
+              helperMaxLines: 3,
+              border: const OutlineInputBorder(),
+            ),
+            onSubmitted: (value) => Navigator.pop(context, value),
+          ),
+        ),
+        actions: [
+          if (app.wmClassOverride != null)
+            TextButton(
+              onPressed: () => Navigator.pop(context, ''),
+              child: const Text('Restaurar original'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null || !context.mounted) return;
+    final trimmed = value.trim();
+    await runGuarded(
+      context,
+      () => manager.setWindowClass(
+        app.id,
+        trimmed.isEmpty || trimmed == app.startupWmClass ? null : trimmed,
+      ),
     );
   }
 
@@ -284,11 +419,13 @@ class _UpdatesSection extends StatefulWidget {
     required this.app,
     required this.manager,
     required this.busy,
+    this.autoUpdate = false,
   });
 
   final ManagedApp app;
   final AppManager manager;
   final bool busy;
+  final bool autoUpdate;
 
   @override
   State<_UpdatesSection> createState() => _UpdatesSectionState();
@@ -299,6 +436,26 @@ class _UpdatesSectionState extends State<_UpdatesSection> {
 
   ManagedApp get app => widget.app;
   AppManager get manager => widget.manager;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoUpdate) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _autoUpdate());
+    }
+  }
+
+  Future<void> _autoUpdate() async {
+    if (!mounted) return;
+    if (!app.usesGitHub) return _updateFromFile();
+    await _check();
+    if (!mounted || manager.updateFor(app.id) == null) return;
+    await runGuarded(
+      context,
+      () => manager.applyGitHubUpdate(app.id),
+      success: '${app.name} atualizado.',
+    );
+  }
 
   Future<void> _changeMode(bool useGitHub) async {
     if (useGitHub == app.usesGitHub) return;

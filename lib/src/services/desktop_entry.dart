@@ -136,9 +136,16 @@ class DesktopEntry {
     return tokens;
   }
 
-  static String build(Map<String, String> entries) {
+  static String build(
+    Map<String, String> entries, {
+    Map<String, Map<String, String>> groups = const {},
+  }) {
     final buffer = StringBuffer('[$mainGroup]\n');
     entries.forEach((key, value) => buffer.write('$key=$value\n'));
+    groups.forEach((group, values) {
+      buffer.write('\n[$group]\n');
+      values.forEach((key, value) => buffer.write('$key=$value\n'));
+    });
     return buffer.toString();
   }
 }

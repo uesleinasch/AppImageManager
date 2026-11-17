@@ -9,15 +9,16 @@ import 'widgets/app_icon.dart';
 
 Future<ManagedApp?> showInstallFlow(
   BuildContext context,
-  AppManager manager,
-) async {
-  final path = await pickAppImage();
-  if (path == null || !context.mounted) return null;
+  AppManager manager, {
+  String? path,
+}) async {
+  final source = path ?? await pickAppImage();
+  if (source == null || !context.mounted) return null;
 
   final draft = await showDialog<InstallDraft>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => _PreparingDialog(manager: manager, path: path),
+    builder: (_) => _PreparingDialog(manager: manager, path: source),
   );
   if (draft == null || !context.mounted) {
     if (draft != null) await manager.discardDraft(draft);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'launch_request.dart';
 import 'services/app_manager.dart';
 import 'ui/home_page.dart';
 
@@ -7,9 +8,10 @@ const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
 const repositoryUrl = 'https://github.com/uesleinasch/AppImageManager';
 
 class AppImageManagerApp extends StatelessWidget {
-  const AppImageManagerApp({super.key, required this.manager});
+  const AppImageManagerApp({super.key, required this.manager, this.launch});
 
   final AppManager manager;
+  final LaunchRequest? launch;
 
   static const _seed = Color(0xFF2B6CB0);
 
@@ -41,7 +43,7 @@ class AppImageManagerApp extends StatelessWidget {
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
       themeMode: ThemeMode.system,
-      home: HomePage(manager: manager),
+      home: HomePage(manager: manager, launch: launch),
     );
   }
 }
