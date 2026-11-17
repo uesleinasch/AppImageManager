@@ -19,6 +19,8 @@ class ManagedApp {
     this.desktopId,
     this.menuEntryFile,
     this.mimeTypes = const [],
+    this.customMimeTypes = const [],
+    this.customTypeGlobs = const {},
     this.fileAssociations = true,
     this.updateInformation,
     this.menuEntry = true,
@@ -45,6 +47,11 @@ class ManagedApp {
     desktopId: json['desktopId'] as String?,
     menuEntryFile: json['menuEntryFile'] as String?,
     mimeTypes: (json['mimeTypes'] as List<dynamic>? ?? const []).cast<String>(),
+    customMimeTypes: (json['customMimeTypes'] as List<dynamic>? ?? const [])
+        .cast<String>(),
+    customTypeGlobs:
+        (json['customTypeGlobs'] as Map<String, dynamic>? ?? const {})
+            .cast<String, String>(),
     fileAssociations: json['fileAssociations'] as bool? ?? true,
     updateInformation: json['updateInformation'] as String?,
     menuEntry: json['menuEntry'] as bool? ?? true,
@@ -73,6 +80,8 @@ class ManagedApp {
   final String? desktopId;
   final String? menuEntryFile;
   final List<String> mimeTypes;
+  final List<String> customMimeTypes;
+  final Map<String, String> customTypeGlobs;
   final bool fileAssociations;
   final String? updateInformation;
   final bool menuEntry;
@@ -82,6 +91,8 @@ class ManagedApp {
   final DateTime? lastCheckedAt;
 
   bool get usesGitHub => github != null;
+
+  List<String> get allMimeTypes => {...mimeTypes, ...customMimeTypes}.toList();
 
   GitHubSource? get suggestedGitHub =>
       GitHubSource.fromUpdateInformation(updateInformation);
@@ -102,6 +113,8 @@ class ManagedApp {
     Object? desktopId = _unset,
     Object? menuEntryFile = _unset,
     List<String>? mimeTypes,
+    List<String>? customMimeTypes,
+    Map<String, String>? customTypeGlobs,
     bool? fileAssociations,
     Object? updateInformation = _unset,
     bool? menuEntry,
@@ -138,6 +151,8 @@ class ManagedApp {
           ? this.menuEntryFile
           : menuEntryFile as String?,
       mimeTypes: mimeTypes ?? this.mimeTypes,
+      customMimeTypes: customMimeTypes ?? this.customMimeTypes,
+      customTypeGlobs: customTypeGlobs ?? this.customTypeGlobs,
       fileAssociations: fileAssociations ?? this.fileAssociations,
       updateInformation: identical(updateInformation, _unset)
           ? this.updateInformation
@@ -170,6 +185,8 @@ class ManagedApp {
     if (desktopId != null) 'desktopId': desktopId,
     if (menuEntryFile != null) 'menuEntryFile': menuEntryFile,
     if (mimeTypes.isNotEmpty) 'mimeTypes': mimeTypes,
+    if (customMimeTypes.isNotEmpty) 'customMimeTypes': customMimeTypes,
+    if (customTypeGlobs.isNotEmpty) 'customTypeGlobs': customTypeGlobs,
     'fileAssociations': fileAssociations,
     if (updateInformation != null) 'updateInformation': updateInformation,
     'menuEntry': menuEntry,

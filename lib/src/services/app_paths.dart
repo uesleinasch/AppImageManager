@@ -8,6 +8,7 @@ class AppPaths {
     required this.configHome,
     required this.dataHome,
     required this.cacheHome,
+    this.systemDataDirs = const [],
   });
 
   factory AppPaths.fromEnvironment([Map<String, String>? environment]) {
@@ -22,11 +23,19 @@ class AppPaths {
       return p.join(home, fallback);
     }
 
+    final dataDirs = (env['XDG_DATA_DIRS'] ?? '')
+        .split(':')
+        .where((dir) => dir.isNotEmpty && p.isAbsolute(dir))
+        .toList();
+
     return AppPaths(
       home: home,
       configHome: xdg('XDG_CONFIG_HOME', '.config'),
       dataHome: xdg('XDG_DATA_HOME', p.join('.local', 'share')),
       cacheHome: xdg('XDG_CACHE_HOME', '.cache'),
+      systemDataDirs: dataDirs.isEmpty
+          ? const ['/usr/local/share', '/usr/share']
+          : dataDirs,
     );
   }
 
@@ -44,6 +53,7 @@ class AppPaths {
   final String configHome;
   final String dataHome;
   final String cacheHome;
+  final List<String> systemDataDirs;
 
   String get stagingDir => p.join(cacheHome, appDirName, 'staging');
   String get appsDir => p.join(home, 'Applications');

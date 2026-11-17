@@ -111,24 +111,37 @@ class _AppDetailsPageState extends State<AppDetailsPage> {
                         secondary: const Icon(Icons.file_open_outlined),
                         title: const Text('Abrir tipos de arquivo associados'),
                         subtitle: Text(
-                          app.mimeTypes.isEmpty
-                              ? 'O AppImage não declara tipos de arquivo'
-                              : app.menuEntry
-                              ? app.mimeTypes.join(', ')
-                              : 'Requer o atalho no menu',
+                          !app.menuEntry
+                              ? 'Requer o atalho no menu'
+                              : app.allMimeTypes.isEmpty
+                              ? 'Nenhum tipo declarado. Adicione abaixo.'
+                              : app.allMimeTypes.join(', '),
                         ),
                         value:
                             app.fileAssociations &&
                             app.menuEntry &&
-                            app.mimeTypes.isNotEmpty,
+                            app.allMimeTypes.isNotEmpty,
                         onChanged:
-                            busy || !app.menuEntry || app.mimeTypes.isEmpty
+                            busy || !app.menuEntry || app.allMimeTypes.isEmpty
                             ? null
                             : (value) => runGuarded(
                                 context,
                                 () =>
                                     manager.setFileAssociations(app.id, value),
                               ),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.edit_document),
+                        title: const Text('Editar tipos de arquivo'),
+                        subtitle: const Text(
+                          'Associe extensões ou tipos MIME manualmente',
+                        ),
+                        enabled: !busy && app.menuEntry,
+                        onTap: () => showDialog<void>(
+                          context: context,
+                          builder: (_) =>
+                              _FileTypesDialog(manager: manager, appId: app.id),
+                        ),
                       ),
                       ListTile(
                         leading: const Icon(Icons.web_asset_rounded),
@@ -672,6 +685,157 @@ class _InfoTile extends StatelessWidget {
       leading: Icon(icon),
       title: Text(label),
       subtitle: SelectableText(value),
+    );
+  }
+}
+
+class _FileTypesDialog extends StatefulWidget {
+  const _FileTypesDialog({required this.manager, required this.appId});
+
+  final AppManager manager;
+  final String appId;
+
+  @override
+  State<_FileTypesDialog> createState() => _FileTypesDialogState();
+}
+
+class _FileTypesDialogState extends State<_FileTypesDialog> {
+  final _input = TextEditingController();
+  String? _error;
+  String? _added;
+  var _busy = false;
+
+  AppManager get manager => widget.manager;
+
+  @override
+  void dispose() {
+    _input.dispose();
+    super.dispose();
+  }
+
+  Future<void> _add() async {
+    if (_input.text.trim().isEmpty) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _added = null;
+    });
+    try {
+      final type = await manager.addFileType(widget.appId, _input.text);
+      _input.clear();
+      if (mounted) setState(() => _added = type);
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _remove(String type) async {
+    setState(() => _error = null);
+    try {
+      await manager.removeFileType(widget.appId, type);
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListenableBuilder(
+      listenable: manager,
+      builder: (context, _) {
+        final app = manager.byId(widget.appId);
+        if (app == null) return const SizedBox.shrink();
+        return AlertDialog(
+          title: const Text('Tipos de arquivo'),
+          content: SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (app.mimeTypes.isNotEmpty) ...[
+                  Text(
+                    'Declarados pelo AppImage',
+                    style: theme.textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final type in app.mimeTypes) Chip(label: Text(type)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                Text(
+                  'Adicionados manualmente',
+                  style: theme.textTheme.labelLarge,
+                ),
+                const SizedBox(height: 8),
+                if (app.customMimeTypes.isEmpty)
+                  Text(
+                    'Nenhum.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                else
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final type in app.customMimeTypes)
+                        InputChip(
+                          label: Text(
+                            app.customTypeGlobs[type] == null
+                                ? type
+                                : '${app.customTypeGlobs[type]} ($type)',
+                          ),
+                          onDeleted: _busy ? null : () => _remove(type),
+                        ),
+                    ],
+                  ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _input,
+                  enabled: !_busy,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Extensão ou tipo MIME',
+                    hintText: '.md, *.excalidraw ou text/markdown',
+                    helperText:
+                        'Extensões conhecidas usam o tipo do sistema; as '
+                        'desconhecidas ganham um tipo novo.',
+                    helperMaxLines: 2,
+                    errorText: _error,
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      tooltip: 'Adicionar',
+                      onPressed: _busy ? null : _add,
+                      icon: const Icon(Icons.add_rounded),
+                    ),
+                  ),
+                  onSubmitted: (_) => _add(),
+                ),
+                if (_added != null) ...[
+                  const SizedBox(height: 8),
+                  Text('Associado: $_added', style: theme.textTheme.bodySmall),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Fechar'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

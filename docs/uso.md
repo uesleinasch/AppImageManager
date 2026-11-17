@@ -64,6 +64,15 @@ Se o `.desktop` do AppImage declara `MimeType=`, o atalho do menu também declar
 
 Por segurança, um pacote só é instalado se todos os tipos que ele define estão no `MimeType=` do app. Um AppImage não consegue redefinir tipos de outros programas, como `*.pdf`.
 
+### Associar tipos manualmente
+
+Se o AppImage não declara tipos, ou faltou algum, use **Editar tipos de arquivo** nos detalhes. Digite uma extensão (`.md`, `*.excalidraw`) ou um tipo MIME (`text/markdown`):
+
+- extensão que o sistema já conhece usa o tipo existente (por exemplo `.md` vira `text/markdown`), sem criar conflito com outros programas;
+- extensão desconhecida ganha um tipo novo, `application/x-appimagemanager-<extensão>`, registrado em `~/.local/share/mime/packages/appimagemanager-<id>--manual.xml`.
+
+Os tipos declarados pelo AppImage aparecem fixos; os manuais podem ser removidos. Eles continuam valendo depois de atualizar o app. Se o `Exec` do app não recebe arquivos (não tem `%f`, `%F`, `%u` nem `%U`), o atalho ganha `%F` para que o arquivo escolhido seja passado ao app.
+
 O interruptor **Abrir tipos de arquivo associados** liga e desliga a associação. Ele exige o atalho no menu. O AppImage Manager não troca o aplicativo padrão; escolha-o em **Abrir com** › **Definir como padrão** no gerenciador de arquivos.
 
 ## Ícone genérico na dock
